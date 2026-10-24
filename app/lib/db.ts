@@ -45,6 +45,7 @@ export interface StreamRepository {
   readonly activity: KeyValueStore<string, ActivityEvent>;
   readonly streams: KeyValueStore<string, Stream>;
   readonly users: KeyValueStore<string, User>;
+  getMultiGroupStreamIds(groupId: string): string[];
   /**
    * Returns all streams belonging to `tenant` using the secondary index
    * (`O(streams in tenant)` instead of `O(all streams)`).

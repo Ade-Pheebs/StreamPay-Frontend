@@ -175,7 +175,14 @@ function createActivityMap(): Map<string, ActivityEvent> {
 }
 
 class InMemoryKeyValueStore<K, V> implements KeyValueStore<K, V> {
-  constructor(private readonly backing: Map<K, V>) {}
+  constructor(
+    private readonly backing: Map<K, V>,
+    private readonly hooks?: {
+      onClear?: () => void;
+      onDelete?: (key: K, value: V) => void;
+      onSet?: (key: K, value: V, previous: V | undefined) => void;
+    },
+  ) {}
 
   get size(): number {
     return this.backing.size;
@@ -183,10 +190,14 @@ class InMemoryKeyValueStore<K, V> implements KeyValueStore<K, V> {
 
   clear(): void {
     this.backing.clear();
+    this.hooks?.onClear?.();
   }
 
   delete(key: K): boolean {
-    return this.backing.delete(key);
+    const value = this.backing.get(key);
+    const deleted = this.backing.delete(key);
+    if (deleted && value !== undefined) this.hooks?.onDelete?.(key, value);
+    return deleted;
   }
 
   entries(): IterableIterator<[K, V]> {
@@ -214,7 +225,9 @@ class InMemoryKeyValueStore<K, V> implements KeyValueStore<K, V> {
   }
 
   set(key: K, value: V): void {
+    const previous = this.backing.get(key);
     this.backing.set(key, value);
+    this.hooks?.onSet?.(key, value, previous);
   }
 
   values(): IterableIterator<V> {
@@ -280,6 +293,7 @@ export class IndexedStreamStore implements KeyValueStore<string, Stream> {
   private readonly backing = new Map<string, Stream>();
   private readonly tenantIndex = new Map<string, Set<string>>();
   private readonly participantIndex = new Map<string, Set<string>>();
+  private readonly multiGroupIndex = new Map<string, Set<string>>();
 
   constructor(initialEntries?: Iterable<[string, Stream]>) {
     if (initialEntries) {
@@ -307,6 +321,12 @@ export class IndexedStreamStore implements KeyValueStore<string, Stream> {
     this.backing.clear();
     this.tenantIndex.clear();
     this.participantIndex.clear();
+    this.multiGroupIndex.clear();
+  }
+
+  /** Stream IDs belonging to a multi-recipient group (secondary index). */
+  getMultiGroupStreamIds(groupId: string): string[] {
+    return [...(this.multiGroupIndex.get(groupId) ?? [])];
   }
 
   delete(id: string): boolean {
@@ -422,6 +442,13 @@ export class IndexedStreamStore implements KeyValueStore<string, Stream> {
       }
       walletSet.add(id);
     }
+
+    const groupId = (stream as Stream & { multiGroupId?: string }).multiGroupId;
+    if (groupId) {
+      const groupIds = this.multiGroupIndex.get(groupId) ?? new Set<string>();
+      groupIds.add(id);
+      this.multiGroupIndex.set(groupId, groupIds);
+    }
   }
 
   private unindexStream(id: string, stream: Stream): void {
@@ -441,6 +468,15 @@ export class IndexedStreamStore implements KeyValueStore<string, Stream> {
         if (walletSet.size === 0) {
           this.participantIndex.delete(wallet);
         }
+      }
+    }
+
+    const groupId = (stream as Stream & { multiGroupId?: string }).multiGroupId;
+    if (groupId) {
+      const groupIds = this.multiGroupIndex.get(groupId);
+      if (groupIds) {
+        groupIds.delete(id);
+        if (groupIds.size === 0) this.multiGroupIndex.delete(groupId);
       }
     }
   }
@@ -465,6 +501,10 @@ export class InMemoryStreamRepository implements StreamRepository {
     resetKeyValueStore(this.streams, createStreamsMap());
     resetKeyValueStore(this.activity, createActivityMap());
     this.locks.clear();
+  }
+
+  getMultiGroupStreamIds(groupId: string): string[] {
+    return this.streams.getMultiGroupStreamIds(groupId);
   }
 
   async withLock<T>(id: string, callback: () => Promise<T>): Promise<T> {

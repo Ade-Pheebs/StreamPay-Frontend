@@ -103,6 +103,45 @@ describe("repository adapters", () => {
     expect(store.exportRepository.processing.get("TEST_PROC")).toBe(testPromise);
   });
 
+  it("maintains the multi-group leg index as streams are changed", () => {
+    const store = createInMemoryPersistenceStore();
+    const streams = store.streamRepository.streams;
+    const leg = (id: string, multiGroupId: string) => ({
+      id,
+      multiGroupId,
+      recipient: "recipient",
+      rate: "1 XLM/s",
+      schedule: "schedule",
+      status: "draft" as const,
+      nextAction: "start" as const,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+      token: "XLM",
+    });
+
+    streams.set("leg-a", leg("leg-a", "group-a"));
+    streams.set("leg-b", leg("leg-b", "group-a"));
+    expect(store.streamRepository.getMultiGroupStreamIds("group-a").sort()).toEqual([
+      "leg-a",
+      "leg-b",
+    ]);
+
+    streams.set("leg-a", leg("leg-a", "group-b"));
+    expect(store.streamRepository.getMultiGroupStreamIds("group-a")).toEqual([
+      "leg-b",
+    ]);
+    expect(store.streamRepository.getMultiGroupStreamIds("group-b")).toEqual([
+      "leg-a",
+    ]);
+
+    streams.delete("leg-b");
+    expect(store.streamRepository.getMultiGroupStreamIds("group-a")).toEqual([]);
+
+    streams.set("leg-c", leg("leg-c", "group-c"));
+    store.streamRepository.reset();
+    expect(store.streamRepository.getMultiGroupStreamIds("group-c")).toEqual([]);
+  });
+
   it("inserts a key only when it does not already exist", () => {
     const store = createInMemoryPersistenceStore();
     setStore(store);
