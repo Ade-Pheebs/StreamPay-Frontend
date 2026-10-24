@@ -110,7 +110,6 @@ export class AppendOnlyAuditLogStore {
   private readonly archivedEntries: AuditEntry[] = [];
   private readonly deepArchivedEntries: DeepArchiveEntry[] = [];
   private readonly checkpoints: AuditCheckpoint[] = [];
-  private readonly checkpoints: AuditCheckpoint[] = [];
 
   append(input: AuditEntryInput): AuditEntry {
     const lastEntry = this.entries[this.entries.length - 1];
