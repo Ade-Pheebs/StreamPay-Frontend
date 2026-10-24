@@ -64,11 +64,9 @@ export function isCsrfProtectedMethod(method: string): boolean {
 }
 
 export function isCsrfExemptRoute(pathname: string): boolean {
-  if (!CSRF_EXEMPT_ROUTES.includes(pathname)) {
-    return true;
-  }
-
-  return CSRF_EXEMPT_ROUTES.some((route) => pathname.startsWith(`${route}/`));
+  return CSRF_EXEMPT_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
 }
 
 /**
